@@ -76,6 +76,7 @@
  <script>
   const MY_LIFF_ID = "2011847486-K9rfnaLX";
   const GAS_URL = "https://script.google.com/macros/s/AKfycbz86PCNEVyHpDPwirvsh3WXQ_MVy6mHKvw5loOq9wVHVLyfJhmMUemU3_NzgMBkohAPIg/exec";
+  const BACKEND_URL = "https://sites.google.com/view/nuclearmedicine-referral/home";
 
   let userProfile = null;
 
@@ -115,22 +116,20 @@
     handleServerResponse(response);
   }
 
-  function handleServerResponse(response) {
-    hideUI('loadingUI');
+function handleServerResponse(response) {
+  hideUI('loadingUI');
 
-    if (response.status === 'allowed') {
-      document.getElementById('welcomeName').innerText =
-        "ยินดีต้อนรับคุณ " + userProfile.displayName;
-      showUI('allowedUI');
-    } else if (response.status === 'pending') {
-      showUI('deniedUI');
-    } else if (response.status === 'new_request') {
-      sendUIDToChat(userProfile.userId);
-      showUI('deniedUI');
-    } else {
-      alert("เกิดข้อผิดพลาด: " + response.message);
-    }
+  if (response.status === 'allowed') {
+    window.location.replace(BACKEND_URL);
+  } else if (response.status === 'pending') {
+    showUI('deniedUI');
+  } else if (response.status === 'new_request') {
+    sendUIDToChat(userProfile.userId);
+    showUI('deniedUI');
+  } else {
+    alert("เกิดข้อผิดพลาด: " + response.message);
   }
+}
 
   function sendUIDToChat(uid) {
     if (liff.isInClient()) {
