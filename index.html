@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบคัดกรองสิทธิ์ (Access Control)</title>
+  
+  <!-- Tailwind CSS & Google Fonts -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- LINE LIFF SDK -->
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+  <style>
+    body { font-family: 'Kanit', sans-serif; }
+    
+    /* อนิเมชั่นพื้นหลังสดใส */
+    .bg-animated {
+      background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+      background-size: 400% 400%;
+      animation: gradient 15s ease infinite;
+    }
+    @keyframes gradient {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* อนิเมชั่นโหลดดิ้งแบบพัลส์ */
+    .pulse-loader {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background-color: white;
+      animation: pulse 1.2s infinite ease-in-out;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0); opacity: 1; }
+      100% { transform: scale(1.5); opacity: 0; }
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-animated flex items-center justify-center p-4">
+
+  <!-- หน้าจอโหลดดิ้ง (แสดงตอนกำลังดึงข้อมูล LINE และตรวจสอบกับ GAS) -->
+  <div id="loadingUI" class="text-center w-full max-w-sm">
+    <div class="pulse-loader mx-auto mb-6 shadow-xl"></div>
+    <h2 class="text-white text-2xl font-bold mb-2">กำลังตรวจสอบสิทธิ์</h2>
+    <p class="text-white/80">กรุณารอสักครู่</p>
+  </div>
+
+  <!-- หน้าจอไม่อนุญาต (รออนุมัติ / หน้าเศร้า) -->
+  <div id="deniedUI" class="hidden bg-white/95 backdrop-blur-lg w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center transform transition-all duration-500 scale-95 opacity-0">
+    <div class="text-7xl mb-4">😥</div>
+    <h2 class="text-2xl font-bold text-gray-800 mb-2">ไม่มีสิทธิ์เข้าถึง</h2>
+    <p class="text-gray-600 mb-6">คุณยังไม่ได้รับอนุญาตให้เข้าระบบ<br><span class="font-semibold text-red-500">กรุณาติดต่อเจ้าหน้าที่</span> เพื่อขออนุมัติ</p>
+    <button onclick="liff.closeWindow()" class="w-full bg-gray-800 text-white font-bold py-3 px-4 rounded-xl hover:bg-gray-700 transition-colors">
+      ปิดหน้าต่างนี้
+    </button>
+  </div>
+
+  <!-- หน้าจออนุญาต (เข้าสู่ระบบหลังบ้านสำเร็จ) -->
+  <div id="allowedUI" class="hidden bg-white/95 backdrop-blur-lg w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center transform transition-all duration-500 scale-95 opacity-0">
+    <div class="text-6xl mb-4">🎉</div>
+    <h2 class="text-2xl font-bold text-green-600 mb-2">เข้าสู่ระบบสำเร็จ!</h2>
+    <p id="welcomeName" class="text-gray-600 mb-6 font-medium"></p>
+    
+    <!-- ปุ่มสำหรับลิงก์ไปเว็บไซต์หลังบ้านของจริง -->
+    <button onclick="goToBackend()" class="w-full bg-gradient-to-r from-green-400 to-blue-500 text-white font-bold py-3 px-4 rounded-xl hover:shadow-lg transform hover:-translate-y-1 transition-all">
+      เข้าสู่ระบบหลังบ้าน
+    </button>
+  </div>
+
+ <script>
+  const MY_LIFF_ID = "2011847486-K9rfnaLX";
+  const GAS_URL = "ใhttps://script.google.com/macros/s/AKfycbz86PCNEVyHpDPwirvsh3WXQ_MVy6mHKvw5loOq9wVHVLyfJhmMUemU3_NzgMBkohAPIg/exec";
+
+  let userProfile = null;
+
+  window.onload = () => initializeLiff(MY_LIFF_ID);
+
+  function showError(msg) {
+    hideUI('loadingUI');
+    alert(msg);
+  }
+
+  async function initializeLiff(myLiffId) {
+    try {
+      await liff.init({ liffId: myLiffId });
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
+      userProfile = await liff.getProfile();
+      await checkAccess();
+    } catch (err) {
+      console.error(err);
+      showError("เกิดข้อผิดพลาด: " + (err.message || err));
+    }
+  }
+
+  async function checkAccess() {
+    // ใช้ text/plain เพื่อไม่ให้เกิด CORS preflight (GAS ไม่รองรับ OPTIONS)
+    const res = await fetch(GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        lineName: userProfile.displayName,
+        lineUid: userProfile.userId
+      })
+    });
+    const response = await res.json();
+    handleServerResponse(response);
+  }
+
+  function handleServerResponse(response) {
+    hideUI('loadingUI');
+
+    if (response.status === 'allowed') {
+      document.getElementById('welcomeName').innerText =
+        "ยินดีต้อนรับคุณ " + userProfile.displayName;
+      showUI('allowedUI');
+    } else if (response.status === 'pending') {
+      showUI('deniedUI');
+    } else if (response.status === 'new_request') {
+      sendUIDToChat(userProfile.userId);
+      showUI('deniedUI');
+    } else {
+      alert("เกิดข้อผิดพลาด: " + response.message);
+    }
+  }
+
+  function sendUIDToChat(uid) {
+    if (liff.isInClient()) {
+      liff.sendMessages([{
+        type: 'text',
+        text: 'ผมขอสิทธิ์เข้าระบบหลังบ้านครับ\nUID ของผมคือ: ' + uid
+      }]).catch(err => console.log('sendMessages error', err));
+    }
+  }
+
+  function goToBackend() {
+    // window.location.href = "https://www.your-backend-website.com";
+    liff.closeWindow();
+  }
+
+  function hideUI(id) {
+    document.getElementById(id).classList.add('hidden');
+  }
+
+  function showUI(id) {
+    const el = document.getElementById(id);
+    el.classList.remove('hidden');
+    setTimeout(() => {
+      el.classList.remove('scale-95', 'opacity-0');
+      el.classList.add('scale-100', 'opacity-100');
+    }, 50);
+  }
+</script>
